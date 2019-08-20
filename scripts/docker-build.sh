@@ -5,4 +5,4 @@ project_dirirectory=$script_dirirectory/..
 echo $project_dirirectory
 cd $project_dirirectory
 
-docker build --tag="aandrewww/alpine-openresty-extended:1.0" .
+docker build --tag="aandrewww/alpine-openresty-extended:latest" .

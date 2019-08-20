@@ -7,6 +7,7 @@ ARG RESTY_VERSION="1.15.8.1"
 ARG OPENSSL_VERSION="1.1.1c"
 ARG PCRE_VERSION="8.42"
 ARG GEOIPUPDATE_VERSION="4.0.3"
+ARG LUAROCKS_VERSION="3.1.3"
 ARG MAKE_J="1"
 ARG RESTY_CONFIG_OPTIONS="\
     --with-compat \
@@ -62,26 +63,31 @@ LABEL resty_config_deps="${_RESTY_CONFIG_DEPS}"
 # 4) Cleanup
 
 RUN apk add --no-cache --virtual .build-deps \
-    bash \
-    build-base \
     coreutils \
-    curl \
     gd-dev \
     geoip-dev \
     git \
     libxslt-dev \
-    linux-headers \
-    make \
     perl-dev \
     readline-dev \
     zlib-dev
 
 RUN apk add --no-cache \
+    bash \
+    build-base \
+    curl \
+    linux-headers \
+    make \
+    outils-md5 \
+    perl \
+    unzip \
     gd \
     geoip \
     libgcc \
     libxslt \
-    zlib
+    zlib \
+    outils-md5 \
+    curl
 
 RUN cd /tmp \
     && curl -fSL https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz -o openssl-${OPENSSL_VERSION}.tar.gz \
@@ -99,13 +105,13 @@ RUN cd /tmp \
     && make -j${MAKE_J} \
     && make -j${MAKE_J} install \
     && cd /tmp \
-    && mkdir -p /usr/share/GeoIP/ \
+    && mkdir -p /usr/share/geoip/ \
     && wget http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.tar.gz \
     && tar xzf GeoLite2-City.tar.gz \
-    && mv GeoLite2-City_20190813/GeoLite2-City.mmdb /usr/share/GeoIP/ \
+    && mv GeoLite2-City_20190813/GeoLite2-City.mmdb /usr/share/geoip/ \
     && wget http://geolite.maxmind.com/download/geoip/database/GeoLite2-Country.tar.gz \
     && tar xzf GeoLite2-Country.tar.gz \
-    && mv GeoLite2-Country_20190813/GeoLite2-Country.mmdb /usr/share/GeoIP/ \
+    && mv GeoLite2-Country_20190813/GeoLite2-Country.mmdb /usr/share/geoip/ \
     && cd /tmp \
     && wget https://github.com/maxmind/geoipupdate/releases/download/v${GEOIPUPDATE_VERSION}/geoipupdate_${GEOIPUPDATE_VERSION}_linux_amd64.tar.gz \
     && tar zxvf geoipupdate_${GEOIPUPDATE_VERSION}_linux_amd64.tar.gz \
@@ -135,6 +141,19 @@ RUN cd /tmp \
     && make -j${MAKE_J} \
     && make -j${MAKE_J} install \
     && cd /tmp \
+    && curl -fSL https://luarocks.github.io/luarocks/releases/luarocks-${LUAROCKS_VERSION}.tar.gz -o luarocks-${LUAROCKS_VERSION}.tar.gz \
+    && tar xzf luarocks-${LUAROCKS_VERSION}.tar.gz \
+    && cd luarocks-${LUAROCKS_VERSION} \
+    && ./configure \
+        --prefix=/usr/local/openresty/luajit \
+        --with-lua=/usr/local/openresty/luajit \
+        --lua-suffix=jit-2.1.0-beta3 \
+        --with-lua-include=/usr/local/openresty/luajit/include/luajit-2.1 \
+    && make build \
+    && make install \
+    && cd /tmp \
+    && rm -rf luarocks-${LUAROCKS_VERSION} luarocks-${LUAROCKS_VERSION}.tar.gz \
+    && cd /tmp \
     && rm -rf \
         openssl-${OPENSSL_VERSION} \
         openssl-${OPENSSL_VERSION}.tar.gz \
@@ -146,6 +165,9 @@ RUN cd /tmp \
 
 # Add additional binaries into PATH for convenience
 ENV PATH=$PATH:/usr/local/openresty/luajit/bin:/usr/local/openresty/nginx/sbin:/usr/local/openresty/bin
+
+ENV LUA_PATH="/usr/local/openresty/site/lualib/?.ljbc;/usr/local/openresty/site/lualib/?/init.ljbc;/usr/local/openresty/lualib/?.ljbc;/usr/local/openresty/lualib/?/init.ljbc;/usr/local/openresty/site/lualib/?.lua;/usr/local/openresty/site/lualib/?/init.lua;/usr/local/openresty/lualib/?.lua;/usr/local/openresty/lualib/?/init.lua;./?.lua;/usr/local/openresty/luajit/share/luajit-2.1.0-beta3/?.lua;/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua;/usr/local/openresty/luajit/share/lua/5.1/?.lua;/usr/local/openresty/luajit/share/lua/5.1/?/init.lua"
+ENV LUA_CPATH="/usr/local/openresty/site/lualib/?.so;/usr/local/openresty/lualib/?.so;./?.so;/usr/local/lib/lua/5.1/?.so;/usr/local/openresty/luajit/lib/lua/5.1/?.so;/usr/local/lib/lua/5.1/loadall.so;/usr/local/openresty/luajit/lib/lua/5.1/?.so"
 
 # Copy nginx configuration files
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
