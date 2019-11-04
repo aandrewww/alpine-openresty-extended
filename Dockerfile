@@ -1,3 +1,20 @@
+FROM golang:alpine as build
+
+ARG VERSION="4.0.6"
+# VOLUME /geodata
+RUN apk add --update wget git bash
+RUN wget -P /tmp/build/ https://github.com/maxmind/geoipupdate/archive/v${VERSION}.tar.gz
+RUN tar -C /tmp/build/ -zxvf /tmp/build/v${VERSION}.tar.gz
+
+ENV GO111MODULE off
+ENV GOPATH /tmp/build/geoipupdate-${VERSION}
+ENV GOBIN $GOPATH/bin
+WORKDIR /tmp/build/geoipupdate-${VERSION}/cmd/geoipupdate
+RUN go get -t ./...
+RUN go build
+
+RUN cp /tmp/build/geoipupdate-${VERSION}/cmd/geoipupdate/geoipupdate /usr/bin/
+
 FROM alpine:3.9
 
 LABEL maintainer="Andrew Avdeev <andrewwww.avdeev@gmail.com>"
@@ -6,7 +23,7 @@ LABEL maintainer="Andrew Avdeev <andrewwww.avdeev@gmail.com>"
 ARG RESTY_VERSION="1.15.8.1"
 ARG OPENSSL_VERSION="1.1.1c"
 ARG PCRE_VERSION="8.42"
-ARG GEOIPUPDATE_VERSION="4.0.3"
+ARG GEOIPUPDATE_VERSION="4.0.6"
 ARG LUAROCKS_VERSION="3.1.3"
 ARG MAKE_J="1"
 ARG RESTY_CONFIG_OPTIONS="\
@@ -106,16 +123,14 @@ RUN cd /tmp \
     && make -j${MAKE_J} install \
     && cd /tmp \
     && mkdir -p /usr/share/geoip/ \
-    && wget http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.tar.gz \
-    && tar xzf GeoLite2-City.tar.gz \
-    && mv GeoLite2-City_20190813/GeoLite2-City.mmdb /usr/share/geoip/ \
-    && wget http://geolite.maxmind.com/download/geoip/database/GeoLite2-Country.tar.gz \
-    && tar xzf GeoLite2-Country.tar.gz \
-    && mv GeoLite2-Country_20190813/GeoLite2-Country.mmdb /usr/share/geoip/ \
-    && cd /tmp \
-    && wget https://github.com/maxmind/geoipupdate/releases/download/v${GEOIPUPDATE_VERSION}/geoipupdate_${GEOIPUPDATE_VERSION}_linux_amd64.tar.gz \
-    && tar zxvf geoipupdate_${GEOIPUPDATE_VERSION}_linux_amd64.tar.gz \
-    && cp geoipupdate_${GEOIPUPDATE_VERSION}_linux_amd64/geoipupdate /usr/local/bin \
+    && wget -c http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.tar.gz -O GeoLite2-City.tar.gz \
+    && mkdir GeoLite2-City \
+    && tar xzf GeoLite2-City.tar.gz --strip-components=1 --directory=GeoLite2-City \
+    && mv GeoLite2-City/GeoLite2-City.mmdb /usr/share/geoip/ \
+    && wget -c http://geolite.maxmind.com/download/geoip/database/GeoLite2-Country.tar.gz -O GeoLite2-Country.tar.gz \
+    && mkdir GeoLite2-Country \
+    && tar xzf GeoLite2-Country.tar.gz --strip-components=1 --directory=GeoLite2-Country \
+    && mv GeoLite2-Country/GeoLite2-Country.mmdb /usr/share/geoip/ \
     && cd /tmp \
     && wget https://github.com/maxmind/libmaxminddb/releases/download/1.3.2/libmaxminddb-1.3.2.tar.gz \
     && tar xzf libmaxminddb-1.3.2.tar.gz \
@@ -172,6 +187,8 @@ ENV LUA_CPATH="/usr/local/openresty/site/lualib/?.so;/usr/local/openresty/lualib
 # Copy nginx configuration files
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY nginx.vh.default.conf /etc/nginx/conf.d/default.conf
+
+COPY --from=build /usr/bin/geoipupdate /usr/local/bin/
 
 CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
 
